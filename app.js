@@ -2,6 +2,7 @@ const $=q=>document.querySelector(q), $$=q=>[...document.querySelectorAll(q)];
 const defaults={machine:'',crop:'',customer:'',hc:'ON',condition:'Normal',symptoms:[],sample:'Clean',tailings:'Not checked',
 setup:{rotor:'500',concave:'20',vanes:'Middle / baseline',fan:'950',presieve:'5',upper:'12',lower:'8',speed:'4.0',load:'75'},pan:{density:'',yield:'',cut:'',discharge:'',speed:'',area:'',grams:'',main:'Not sure',notes:''},saved:[]};
 let S=JSON.parse(localStorage.getItem('optimizerPro')||'null')||defaults,page='home';
+const app=document.getElementById('app');
 S.setup={...defaults.setup,...(S.setup||{})};
 const machines=['8230','8240','8250','9230','9240','9250','AF9','AF10','AF11'];
 const crops=['Canola','Wheat','Barley','Oats','Peas','Lentils','Flax','Soybeans','Corn','Other'];
@@ -20,7 +21,7 @@ function currentSettings(){return `${inp('Rotor RPM','rotor',S.setup,'number')}$
 function simulator(){
  const s=S.setup,n=v=>Number(v)||0,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
  const rotor=n(s.rotor)||500,conc=n(s.concave)||20,fan=n(s.fan)||950,pre=n(s.presieve)||5,upper=n(s.upper)||12,lower=n(s.lower)||8,speed=n(s.speed)||4,load=n(s.load)||75;
- const retention=s.vanes==='More retention'?1.18:s.vanes==='Faster crop travel'?.84:1;
+ const retention=s.vanes==='More retention' ? 1.18 : (s.vanes==='Faster crop travel' ? 0.84 : 1);
  const thresh=cl(62+(rotor-450)*.055-(conc-20)*.8,20,98),sep=cl((76+(rotor-500)*.025-speed*2.5)*retention,20,98);
  const air=cl(48+(fan-700)*.065,20,98),shoe=cl(76+(pre-5)*1.1+(upper-12)*.8+(lower-8)*.6-Math.max(0,load-80)*.8,20,98);
  const damage=cl(4+Math.max(0,rotor-600)*.035+Math.max(0,15-conc)*.8,1,35),loss=cl((100-sep)*.16+(100-shoe)*.18+Math.max(0,air-84)*.3,1,40);
