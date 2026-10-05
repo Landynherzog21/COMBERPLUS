@@ -16,3 +16,19 @@ nav button{border:0;background:#111;color:white;padding:14px 2px;font-size:9px;f
 @keyframes cropFlow{0%{transform:translate(0,110px);opacity:0}8%{opacity:1}30%{transform:translate(210px,105px)}52%{transform:translate(360px,150px)}70%{transform:translate(430px,220px)}86%{transform:translate(555px,210px)}100%{transform:translate(690px,160px);opacity:.2}}
 @media(max-width:560px){.grid2,.result{grid-template-columns:1fr}.simStats{grid-template-columns:1fr 1fr}.combineSim{min-height:300px}.rotorBox{left:23%;width:44%}.shoeBox{left:30%;width:45%}.fanIcon{left:17%;width:54px;height:54px}.simLabel{font-size:8px}nav button{font-size:8px;padding-left:0;padding-right:0}}
 @media(prefers-reduced-motion:reduce){.particle,.rotorCore,.fanIcon,.airPath{animation:none}}
+
+.cutLegend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;font-weight:900;margin-bottom:8px}.lgGrain{color:#b58a00}.lgMog{color:#79532f}.lgAir{color:#338bb8}
+.cutawayWrap{overflow-x:auto;background:#3a3d3f;border-radius:12px;padding:5px;background-image:linear-gradient(30deg,#444 12%,transparent 12.5%,transparent 87%,#444 87.5%,#444),linear-gradient(150deg,#444 12%,transparent 12.5%,transparent 87%,#444 87.5%,#444);background-size:38px 66px}
+.cutaway{display:block;width:100%;min-width:650px;height:auto}.cutaway text{font:800 12px Arial;fill:#f4f4f4}.machineFrame{fill:rgba(28,31,33,.68);stroke:#777;stroke-width:3}.callout text{font-size:10px;fill:#eee}
+.rotorSpin{transform-box:fill-box;transform-origin:center;animation:rotorRoll var(--rd) linear infinite}.fanSpin{transform-box:fill-box;transform-origin:center;animation:fanRoll var(--fd) linear infinite}.airArrows{animation:airMove .8s linear infinite}
+.cropstream .cg{animation:cropCut var(--flow) linear infinite}.cropstream .g{fill:#e4bd39;stroke:#6f5700;stroke-width:.6}.cropstream .m{fill:#b78c53}.cropstream .cg:nth-child(3n){animation-delay:-.3s}.cropstream .cg:nth-child(4n){animation-delay:-.65s}.cropstream .cg:nth-child(5n){animation-delay:-.95s}
+.separated .fall{fill:#e6bd37;animation:grainFall 1.35s linear infinite}.separated .f1{animation-delay:-.25s}.separated .f2{animation-delay:-.55s}.separated .f3{animation-delay:-.85s}
+.shoeflow .shoegrain{fill:#e6bd37;animation:shoeGrain 1.7s linear infinite}.shoeflow .chaffbit{fill:#9b7043;animation:chaffMove 1.25s linear infinite}.sg1,.cb1{animation-delay:-.25s}.sg2,.cb2{animation-delay:-.5s}.sg3,.cb3{animation-delay:-.75s}.sg4,.cb4{animation-delay:-1s}
+.grainAuger{animation:augerPulse .7s linear infinite}.residuePath{animation:residueMove .8s linear infinite}.effectGuide,.flowSteps{margin-top:12px;padding:11px;border-radius:9px;background:#eee;font-size:12px;line-height:1.55}
+@keyframes rotorRoll{to{transform:rotate(360deg)}}@keyframes fanRoll{to{transform:rotate(360deg)}}@keyframes airMove{to{stroke-dashoffset:-24}}@keyframes residueMove{to{stroke-dashoffset:-33}}
+@keyframes cropCut{0%{transform:translate(0,0);opacity:0}8%{opacity:1}38%{transform:translate(290px,-18px)}62%{transform:translate(450px,-26px)}82%{transform:translate(590px,2px)}100%{transform:translate(760px,65px);opacity:.2}}
+@keyframes grainFall{0%{transform:translate(0,0);opacity:0}15%{opacity:1}100%{transform:translate(18px,93px);opacity:.25}}
+@keyframes shoeGrain{0%{transform:translate(0,0)}55%{transform:translate(110px,-5px)}100%{transform:translate(155px,62px);opacity:.15}}
+@keyframes chaffMove{0%{transform:translate(0,0)}100%{transform:translate(260px,-25px);opacity:.2}}@keyframes augerPulse{50%{stroke:#bbb}}
+@media(max-width:560px){.cutaway{min-width:620px}.cutawayWrap{margin-left:-8px;margin-right:-8px;border-radius:8px}.simStats{grid-template-columns:1fr 1fr}}
+@media(prefers-reduced-motion:reduce){.rotorSpin,.fanSpin,.airArrows,.cropstream .cg,.separated .fall,.shoeflow .shoegrain,.shoeflow .chaffbit,.grainAuger,.residuePath{animation:none}}
