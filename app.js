@@ -21,33 +21,26 @@ function currentSettings(){return `${inp('Rotor RPM','rotor',S.setup,'number')}$
 function simulator(){
  const s=S.setup,n=v=>Number(v)||0,cl=(v,a,b)=>Math.max(a,Math.min(b,v));
  const rotor=n(s.rotor)||500,conc=n(s.concave)||20,fan=n(s.fan)||950,pre=n(s.presieve)||5,upper=n(s.upper)||12,lower=n(s.lower)||8,speed=n(s.speed)||4,load=n(s.load)||75;
- const retention=s.vanes==='More retention'?1.18:(s.vanes==='Faster crop travel'?.84:1);
+ const retention=s.vanes==='More retention'?1.18:(s.vanes==='Faster crop travel'?0.84:1);
  const thresh=cl(62+(rotor-450)*.055-(conc-20)*.8,20,98),sep=cl((76+(rotor-500)*.025-speed*2.5)*retention,20,98);
  const air=cl(48+(fan-700)*.065,20,98),shoe=cl(76+(pre-5)*1.1+(upper-12)*.8+(lower-8)*.6-Math.max(0,load-80)*.8,20,98);
  const clean=cl(78+(air-50)*.22-Math.abs(upper-12)*.55-Math.max(0,pre-10)*.7,45,99),loss=cl((100-sep)*.16+(100-shoe)*.18+Math.max(0,air-84)*.3,1,40);
  const damage=cl(4+Math.max(0,rotor-600)*.035+Math.max(0,15-conc)*.8,1,35);
- const crop=S.crop||'Crop', machine=S.machine||'Combine';
- app.innerHTML='<h1>X-Ray Crop Flow</h1><div class="note"><b>Live cutaway simulator:</b> built around the real machine flow shown in the reference image — crop enters at the feeder, wraps through the rotor/concaves, grain drops to the cleaning system, air carries MOG rearward, clean grain goes to the tank and straw exits the rear.</div>'+
- card(machine+' • '+crop,
- '<div class="xrWrap">'+
- '<div class="xrMachine">'+
- '<div class="xrTank"><span>CLEAN GRAIN TANK</span><i class="tankGrain"></i></div>'+
- '<div class="xrFeeder"><span>HEADER & FEEDER</span><div class="cropMat"></div><div class="feedChain"></div></div>'+
- '<div class="xrRotor"><span>ROTOR & CONCAVES</span><div class="rotorBody" style="animation-duration:'+cl(70/rotor,0.08,.22)+'s"></div><div class="concaveBars" style="bottom:'+cl(8+conc*.25,10,24)+'px"></div><div class="wrapCrop"></div></div>'+
- '<div class="xrPan"><span>GRAIN PAN</span><div class="panGrain"></div></div>'+
- '<div class="xrShoe"><span>PRE-SIEVE / UPPER / LOWER SIEVE</span><div class="sieve s1" style="--open:'+cl(pre,2,18)+'px"></div><div class="sieve s2" style="--open:'+cl(upper,3,22)+'px"></div><div class="sieve s3" style="--open:'+cl(lower,3,18)+'px"></div><div class="shoeCrop"></div></div>'+
- '<div class="xrFan"><span>FAN</span><div class="fanWheel" style="animation-duration:'+cl(90/fan,.06,.22)+'s"></div></div>'+
- '<div class="xrAir" style="opacity:'+cl(air/100,.3,1)+'"><i></i><i></i><i></i></div>'+
- '<div class="xrElevator"><span>CLEAN GRAIN</span><div class="elevatorGrain"></div></div>'+
- '<div class="xrResidue"><span>RESIDUE EXIT</span><div class="strawExit"></div></div>'+
- '<div class="grainFall gf1"></div><div class="grainFall gf2"></div><div class="grainFall gf3"></div>'+
+ app.innerHTML='<h1>Photorealistic X-Ray Crop Flow</h1><div class="note"><b>Live machine cutaway:</b> the photorealistic combine is now the simulator base. Animated overlays show crop, grain, MOG and airflow through the actual machine layout.</div>'+
+ card((S.machine||'Combine')+' • '+(S.crop||'Crop'),
+ '<div class="photoSim" style="--rotorDur:'+cl(70/rotor,.08,.22)+'s;--airPower:'+cl(air/100,.35,1)+';--flowDur:'+cl(1.8-speed*.16,.65,1.5)+'s">'+
+ '<img class="photoCombine" src="./combine-xray-github.jpg?v=10" alt="Photorealistic x-ray combine crop flow">'+
+ '<div class="hot feederHot"><b>1</b><span>FEEDER</span></div><div class="hot rotorHot"><b>2</b><span>ROTOR + CONCAVES</span></div><div class="hot panHot"><b>3</b><span>GRAIN PAN</span></div><div class="hot shoeHot"><b>4</b><span>CLEANING SHOE</span></div><div class="hot tankHot"><b>5</b><span>CLEAN GRAIN</span></div><div class="hot residueHot"><b>6</b><span>RESIDUE</span></div>'+
+ '<div class="photoCrop cropA"></div><div class="photoCrop cropB"></div><div class="photoCrop cropC"></div>'+
+ '<div class="photoGrain grainA"></div><div class="photoGrain grainB"></div><div class="photoGrain grainC"></div>'+
+ '<div class="photoAir airA">➜ ➜ ➜</div><div class="photoAir airB">➜ ➜ ➜</div>'+
+ '<div class="rotorPulse"></div><div class="photoResidue"></div>'+
  '</div>'+
- '<div class="xrLegend"><b class="grainKey">● Grain</b><b class="strawKey">━ Straw / MOG</b><b class="airKey">➜ Airflow</b></div>'+
- '</div>'+
+ '<div class="xrLegend"><b class="grainKey">● Grain</b><b class="strawKey">━ Crop / MOG</b><b class="airKey">➜ Airflow</b></div>'+
  '<div class="simStats"><div><b>'+thresh.toFixed(0)+'%</b><small>Threshing action</small></div><div><b>'+sep.toFixed(0)+'%</b><small>Separation</small></div><div><b>'+clean.toFixed(0)+'%</b><small>Sample clean</small></div><div><b>'+loss.toFixed(1)+'%</b><small>Loss risk</small></div></div>'+
  '<div class="simReadout"><b>Current effect:</b> '+rotor+' rotor rpm • '+conc+' concave • '+fan+' fan rpm • '+speed.toFixed(1)+' mph • '+load+'% load. Damage risk: <strong>'+(damage>18?'HIGH':damage>9?'MODERATE':'LOW')+'</strong>.</div>')+
- card('Live Machine Controls','<div class="grid2">'+currentSettings()+'</div><div class="effectGuide"><b>Watch the x-ray:</b> rotor RPM changes rotor speed; concave clearance moves the concave away from the rotor; fan RPM strengthens the blue airflow; sieve settings change the visible openings; ground speed and load represent how much material is being pushed through the machine.</div>')+
- card('Crop Flow','<div class="flowSteps"><b>1 HEADER & FEEDER</b> crop enters as a mat → <b>2 ROTOR & CONCAVES</b> grain is threshed and separated → <b>3 GRAIN PAN</b> separated material moves to cleaning → <b>4 SIEVES + FAN</b> grain falls while light MOG moves rearward → <b>5 CLEAN GRAIN</b> grain elevates to tank → <b>6 RESIDUE</b> straw/chaff leaves the rear.</div>');
+ card('Live Machine Controls','<div class="grid2">'+currentSettings()+'</div><div class="effectGuide"><b>What changes visually:</b> rotor RPM changes the rotor activity; concave clearance changes separation intensity; fan RPM changes blue airflow strength; pre-sieve and sieve settings change cleaning performance; ground speed/load change crop-flow rate.</div>')+
+ card('Crop Flow','<div class="flowSteps"><b>1 FEEDER</b> crop mat enters → <b>2 ROTOR</b> threshing and separation → <b>3 PAN</b> grain/MOG moves to cleaning → <b>4 CLEANING SHOE</b> fan lifts light MOG while grain falls → <b>5 CLEAN GRAIN</b> grain moves to tank → <b>6 RESIDUE</b> straw/chaff exits rear.</div>');
  bind(S.setup);
 }
 function recommendations(){let r=[];const has=x=>S.symptoms.includes(x);if(has('Unthreshed grain / heads / pods')||S.sample==='Unthreshed material'||S.tailings==='Unthreshed heads / pods')r.push(['THRESHING','Verify grain is still attached. Test more effective threshing with rotor speed and/or concave clearance. Make one change, then physically verify.']);if(has('Rotor loss / free grain in straw')||S.pan.main==='Rotor / separation')r.push(['SEPARATION','Loose grain with straw points to separation. Check crop load and separation opportunity; test rotor/cage-vane strategy from the current baseline and verify with pans.']);if(has('Sieve loss / free grain in chaff')||has('Grain blowing out')||S.pan.main==='Cleaning system')r.push(['CLEANING','Loose grain with chaff points to the cleaning system. Determine whether the shoe is overloaded or airflow is carrying grain out before changing fan or sieve openings.']);if(has('Cracked / broken grain')||S.sample==='Cracked / damaged grain')r.push(['GRAIN DAMAGE','Reduce unnecessary threshing/rethreshing. Check rotor aggression, concave clearance and whether clean grain is being recirculated in tailings.']);if(has('Dirty sample / MOG')||S.sample==='Dirty / high MOG')r.push(['DIRTY SAMPLE','Identify whether MOG is being created upstream by aggressive threshing or not removed by the cleaning system. Do not automatically close sieves first.']);if(S.tailings==='Mostly clean grain')r.push(['TAILINGS','Mostly clean grain in returns can indicate cleaning restriction. Check sieve openings and loading before increasing threshing aggression.']);if(!r.length)r.push(['VERIFY FIRST','Physically classify the problem: attached grain = threshing, loose grain with straw = separation, loose grain with chaff = cleaning. Then make one change and recheck.']);app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>One change at a time.</b> Confirm the physical loss location before chasing monitor numbers.</div>${card('Ranked Diagnostic Direction',r.map((x,i)=>`<div class="rec"><h3>${i+1}. ${x[0]}</h3><p>${x[1]}</p></div>`).join(''))}<button class="btn" id="saveSetup">SAVE THIS SETUP</button>`;$('#saveSetup').onclick=()=>{S.saved.unshift({date:new Date().toLocaleDateString(),machine:S.machine,crop:S.crop,customer:S.customer,setup:{...S.setup},note:r[0][0]});S.saved=S.saved.slice(0,30);save();alert('Setup saved')}}
