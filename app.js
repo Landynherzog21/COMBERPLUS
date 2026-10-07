@@ -281,16 +281,41 @@ function openCleaningShoeDiagnostic(){
 }
 function openAdjustment(rec){
  const settings=rec[2]||[];if(!settings.length)return;
- const setting=prompt('Which setting do you want to adjust?\\n\\n'+settings.map((x,i)=>(i+1)+'. '+x).join('\\n')+'\\n\\nType the setting name:');
- if(!setting)return;
- const matched=settings.find(x=>x.toLowerCase()===setting.trim().toLowerCase())||settings.find(x=>x.toLowerCase().includes(setting.trim().toLowerCase()));
- if(!matched){alert('That setting is not one of the recommended adjustments for this problem.');return}
- const min=Number(prompt(matched+' — enter the MINIMUM automation range:'));if(!Number.isFinite(min))return;
- const max=Number(prompt(matched+' — enter the MAXIMUM automation range:'));if(!Number.isFinite(max)||max<=min){alert('Maximum must be greater than minimum.');return}
- const sens=Number(prompt(matched+' — enter current SENSITIVITY (%):'));if(!Number.isFinite(sens))return;
- const actual=Number(prompt(matched+' — where is the combine ACTUALLY running right now?'));if(!Number.isFinite(actual))return;
- const severity=prompt('How bad is the problem? Type MILD, MODERATE, or SEVERE:')||'MODERATE';
- showAdjustment(rec[0],matched,min,max,sens,actual,severity);
+ alert(rec[0]+' — ENTER CURRENT AUTOMATION DATA\\n\\nThe app will check every relevant setting and choose which one should be adjusted first.\\n\\nFor each setting enter: Min Range, Max Range, Sensitivity, Current Position.');
+ const data=[];
+ for(const name of settings){
+   const x=askShoeSetting(name);if(!x)return;data.push(x);
+ }
+ chooseBestAdjustment(rec[0],data);
+}
+function adjustmentDirection(problem,name){
+ if(name==='Concave clearance'&&problem==='THRESHING')return -1;
+ if(name==='Concave clearance'&&problem==='GRAIN DAMAGE')return 1;
+ if(problem==='GRAIN DAMAGE'&&name==='Rotor speed')return -1;
+ if(problem==='TAILINGS'&&(name==='Upper sieve'||name==='Lower sieve'))return 1;
+ if(problem==='DIRTY SAMPLE'&&name==='Rotor speed')return -1;
+ return 1;
+}
+function chooseBestAdjustment(problem,data){
+ const scored=data.map(x=>{
+   const dir=adjustmentDirection(problem,x.name);
+   const room=dir>0?(x.max-x.actual):(x.actual-x.min);
+   const roomPct=Math.max(0,Math.min(1,room/(x.max-x.min)));
+   const edgePenalty=roomPct<0.1?0.15:1;
+   const sensitivityRoom=Math.max(0,100-x.sens)/100;
+   return {...x,dir,score:(roomPct*0.8+sensitivityRoom*0.2)*edgePenalty};
+ }).sort((a,b)=>b.score-a.score);
+ const best=scored[0],dir=best.dir,span=best.max-best.min;
+ const step=span*0.07*dir;
+ const target=Math.max(best.min,Math.min(best.max,best.actual+step));
+ const sensTarget=Math.max(0,Math.min(100,best.sens+10));
+ const pos=x=>x.name+': '+x.actual+' | '+x.min+'–'+x.max+' | '+x.pos.toFixed(0)+'% through range | Sensitivity '+x.sens+'%';
+ const verb=dir>0?'increase/open':'decrease/tighten';
+ const second=scored[1];
+ let msg=problem+' ANALYSIS\\n\\n'+data.map(pos).join('\\n')+'\\n\\nRECOMMENDED FIRST ADJUSTMENT\\n\\n'+best.name+' is the best first adjustment based on the entered ranges, actual positions and available adjustment room.\\n\\nTest: '+verb+' '+best.name+' from '+best.actual+' to about '+Number(target.toFixed(1))+'. Increase its automation sensitivity from '+best.sens+'% to about '+Number(sensTarget.toFixed(0))+'% if you want Harvest Command to react more strongly.\\n\\n';
+ if(second)msg+='SECOND CHOICE\\n'+second.name+' has the next-best usable adjustment room, but leave it alone until you test the first change.\\n\\n';
+ msg+='Make one change only, run a representative distance, then inspect the physical result before changing another setting.';
+ alert(msg);
 }
 function showAdjustment(problem,setting,min,max,sens,actual,severity){
  const span=max-min,pos=Math.max(0,Math.min(100,(actual-min)/span*100));
