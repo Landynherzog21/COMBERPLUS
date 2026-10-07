@@ -245,8 +245,39 @@ function recommendations(){
  if(S.tailings==='Mostly clean grain')r.push(['TAILINGS','Mostly clean grain in returns can indicate cleaning restriction. Check sieve openings and loading before increasing threshing aggression.',['Upper sieve','Lower sieve']]);
  if(!r.length)r.push(['VERIFY FIRST','Physically classify the problem: attached grain = threshing, loose grain with straw = separation, loose grain with chaff = cleaning. Then make one change and recheck.',[]]);
  app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>One change at a time.</b> Confirm the physical loss location before chasing monitor numbers.</div>${card('Ranked Diagnostic Direction',r.map((x,i)=>`<div class="rec"><h3>${i+1}. ${x[0]}</h3><p>${x[1]}</p>${x[2].length?`<button class="btn tuneBtn" data-ri="${i}">CALCULATE ADJUSTMENT</button>`:''}</div>`).join(''))}<button class="btn" id="saveSetup">SAVE THIS SETUP</button>`;
- $$('.tuneBtn').forEach(b=>b.onclick=()=>openAdjustment(r[Number(b.dataset.ri)]));
+ $('.tuneBtn').forEach(b=>b.onclick=()=>{const rec=r[Number(b.dataset.ri)];rec[0]==='DIRTY SAMPLE'?openCleaningShoeDiagnostic():openAdjustment(rec)});
  $('#saveSetup').onclick=()=>{S.saved.unshift({date:new Date().toLocaleDateString(),machine:S.machine,crop:S.crop,customer:S.customer,setup:{...S.setup},note:r[0][0]});S.saved=S.saved.slice(0,30);save();alert('Setup saved')}
+}
+function askShoeSetting(name){
+ const min=Number(prompt(name+' — MIN RANGE:'));if(!Number.isFinite(min))return null;
+ const max=Number(prompt(name+' — MAX RANGE:'));if(!Number.isFinite(max)||max<=min){alert('Max Range must be greater than Min Range.');return null}
+ const sens=Number(prompt(name+' — SENSITIVITY (%):'));if(!Number.isFinite(sens))return null;
+ const actual=Number(prompt(name+' — CURRENT POSITION:'));if(!Number.isFinite(actual))return null;
+ return {name,min,max,sens,actual,pos:Math.max(0,Math.min(100,(actual-min)/(max-min)*100))};
+}
+function openCleaningShoeDiagnostic(){
+ alert('DIRTY SAMPLE — CLEANING SHOE\\n\\nEnter 4 things for each setting:\\n1. Min Range\\n2. Max Range\\n3. Sensitivity\\n4. Current Position');
+ const fan=askShoeSetting('Fan');if(!fan)return;
+ const pre=askShoeSetting('Pre-sieve');if(!pre)return;
+ const upper=askShoeSetting('Upper sieve');if(!upper)return;
+ const lower=askShoeSetting('Lower sieve');if(!lower)return;
+ const a=[fan,pre,upper,lower];
+ const line=x=>x.name+': '+x.actual+' | Range '+x.min+'–'+x.max+' | '+x.pos.toFixed(0)+'% through range | Sensitivity '+x.sens+'%';
+ const room=x=>Math.min(x.actual-x.min,x.max-x.actual)/(x.max-x.min);
+ let rec=[];
+ if(fan.pos<35)rec.push('Fan is running low in its range. Test a small fan increase first and recheck the sample.');
+ else if(fan.pos>90)rec.push('Fan is already near the top of its range. Do not simply increase sensitivity or range until you verify grain is not being blown out.');
+ else rec.push('Fan has usable adjustment room. Make only a small increase if light MOG/chaff is the main contamination.');
+ if(upper.pos>70)rec.push('Upper sieve is running fairly open. A small closing test may improve the sample; watch shoe loss and returns.');
+ else if(upper.pos<15)rec.push('Upper sieve is already near the closed end. Do not keep closing it; restriction may increase returns or loss.');
+ else rec.push('Upper sieve is in the middle of its range; keep changes small and use it as the primary sieve test.');
+ if(pre.pos>80)rec.push('Pre-sieve is near the open end. Consider a small closing test if excess MOG is passing into the lower shoe.');
+ else if(pre.pos<10)rec.push('Pre-sieve is already near minimum. Avoid further closing unless a physical check supports it.');
+ if(lower.pos<15)rec.push('Lower sieve is already near minimum. Further closing can drive clean grain into tailings.');
+ else if(lower.pos>80)rec.push('Lower sieve is quite open. A small closing test may clean the sample, but watch tailings.');
+ const sens=a.sort((x,y)=>room(y)-room(x))[0];
+ rec.push('Sensitivity: '+sens.name+' currently has the most safe adjustment room. If automation is not reacting enough, increase its sensitivity about 5–10% before making a large range change.');
+ alert('CLEANING SHOE ANALYSIS\\n\\n'+a.map(line).join('\\n')+'\\n\\nFINAL RECOMMENDATION\\n\\n'+rec.map((x,i)=>(i+1)+'. '+x).join('\\n\\n')+'\\n\\nMake one change, run the combine, inspect the sample and verify physical loss before making the next change.');
 }
 function openAdjustment(rec){
  const settings=rec[2]||[];if(!settings.length)return;
