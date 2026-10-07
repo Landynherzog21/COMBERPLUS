@@ -51,14 +51,19 @@ function runAreaDiagnostic(area){
 }
 function showAreaRecommendation(area,data){
  const issue={Feeding:'FEEDING',Threshing:'THRESHING',Separation:'SEPARATION',Cleaning:'CLEANING',Residue:'RESIDUE'}[area]||area.toUpperCase();
- const scored=data.map(x=>{const middle=1-Math.abs(50-x.pos)/50;const sensRoom=Math.max(0,100-x.sens)/100;return {...x,score:middle*.75+sensRoom*.25}}).sort((a,b)=>b.score-a.score);
+ const scored=data.map(x=>{const edge=Math.min(x.pos,100-x.pos)/50;const sensRoom=Math.max(0,100-x.sens)/100;return {...x,score:edge*.75+sensRoom*.25}}).sort((a,b)=>b.score-a.score);
  const best=scored[0],second=scored[1],span=best.max-best.min;
- let direction=1,word='increase';
- if(area==='Threshing'&&best.name==='Concave clearance'){direction=-1;word='tighten'}
- if(area==='Cleaning'&&(best.name==='Pre-sieve'||best.name==='Upper sieve'||best.name==='Lower sieve')){direction=-1;word='close slightly'}
- const target=Math.max(best.min,Math.min(best.max,best.actual+span*.07*direction));
+ let direction=1;
+ if(area==='Threshing'&&best.name==='Concave clearance')direction=-1;
+ if(area==='Cleaning'&&(best.name==='Pre-sieve'||best.name==='Upper sieve'||best.name==='Lower sieve'))direction=-1;
+ const rangeStep=Math.max(span*.10,span*.05);
+ const newMin=direction<0?Number((best.min-rangeStep).toFixed(1)):best.min;
+ const newMax=direction>0?Number((best.max+rangeStep).toFixed(1)):best.max;
+ const rangeAction=direction>0?'Raise Max Range':'Lower Min Range';
+ const rangeFrom=direction>0?best.max:best.min;
+ const rangeTo=direction>0?newMax:newMin;
  const newSens=Math.min(100,best.sens+10);
- S.diagnosticResult={area,issue,data,best,second,target:Number(target.toFixed(1)),newSens,word,date:new Date().toLocaleString()};
+ S.diagnosticResult={area,issue,data,best,second,rangeAction,rangeFrom,rangeTo,newMin,newMax,newSens,date:new Date().toLocaleString()};
  save();page='recommend';render();
 }
 function pans(){if(!S.pan.density&&densities[S.crop])S.pan.density=densities[S.crop];const p=S.pan,n=v=>Number(v)||0,area=n(p.area),g=n(p.grams),density=n(p.density),cut=n(p.cut),dis=n(p.discharge);let lb=0,bu=0,pct=0;if(area&&g&&density&&cut&&dis){lb=(g/area)*43560/453.59237*(dis/cut);bu=lb/density;pct=n(p.yield)?bu/n(p.yield)*100:0}app.innerHTML=`<h1>Drop Pans</h1><div class="note">Enter the actual catch area and collected loss weight. The calculator estimates field loss after correcting discharge width to cut width.</div>${card('Combine Loss Results',`<div class="grid2">${inp('Density / test weight (lb/bu)','density',p,'number')}${inp('Yield (bu/ac)','yield',p,'number')}${inp('Cut width (ft)','cut',p,'number')}${inp('Discharge width (ft)','discharge',p,'number')}${inp('Ground speed (mph)','speed',p,'number')}${inp('Catch area (ft²)','area',p,'number')}${inp('Loss weight (grams)','grams',p,'number')}</div><div class="result"><div><b>${bu.toFixed(2)}</b><small>bu/ac loss</small></div><div><b>${pct.toFixed(2)}%</b><small>yield loss</small></div><div><b>${lb.toFixed(1)}</b><small>lb/ac</small></div></div>`)}${card('Physical Classification',`${sel('Main physical loss location','main',['Not sure','Header','Rotor / separation','Cleaning system','No significant physical loss'],p)}<label>Notes</label><textarea data-key="notes">${p.notes||''}</textarea><button class="btn" data-go="recommend">BUILD FINAL RECOMMENDATIONS</button>`)}`;bind(p)}
@@ -284,7 +289,7 @@ function recommendations(){
  const d=S.diagnosticResult;
  if(d){
   const lines=d.data.map(x=>`<div class="rec"><b>${x.name}</b><br>Current: ${x.actual} &nbsp; | &nbsp; Range: ${x.min}–${x.max}<br>${x.pos.toFixed(0)}% through range &nbsp; | &nbsp; Sensitivity: ${x.sens}%</div>`).join('');
-  app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>${d.issue} diagnostic complete.</b> Recommendation is based on the settings entered in Diagnose.</div>${card('Entered Machine Data',lines)}${card('Recommended First Adjustment',`<div class="rec"><h3>${d.best.name}</h3><p>Test ${d.word} from <b>${d.best.actual}</b> to about <b>${d.target}</b>.</p><p>If automation needs to react more strongly, test sensitivity from <b>${d.best.sens}%</b> to about <b>${d.newSens}%</b>.</p>${d.second?`<p><b>Second choice:</b> ${d.second.name}. Leave it unchanged until the first adjustment is tested.</p>`:''}<p>Make one change, run a representative distance, then physically verify the result before changing another setting.</p></div>`)}<button class="btn" id="newDiag">NEW DIAGNOSTIC</button>`;
+  app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>${d.issue} diagnostic complete.</b> Recommendation is based on the settings entered in Diagnose.</div>${card('Entered Machine Data',lines)}${card('Recommended First Adjustment',`<div class="rec"><h3>${d.best.name}</h3><p><b>Leave Current Position under automation control.</b> It is currently at ${d.best.actual}.</p><p><b>${d.rangeAction}:</b> ${d.rangeFrom} → about <b>${d.rangeTo}</b>. This gives Harvest Command more room to make the required adjustment automatically.</p><p>If automation is reacting too slowly within the range, test sensitivity from <b>${d.best.sens}%</b> to about <b>${d.newSens}%</b>.</p>${d.second?`<p><b>Second choice:</b> ${d.second.name}. Leave it unchanged until the first adjustment is tested.</p>`:''}<p>Make one change, run a representative distance, then physically verify the result before changing another setting.</p></div>`)}<button class="btn" id="newDiag">NEW DIAGNOSTIC</button>`;
   $('#newDiag').onclick=()=>{S.diagnosticResult=null;save();page='diagnose';render()};
   return;
  }
@@ -387,8 +392,14 @@ function showAdjustment(problem,setting,min,max,sens,actual,severity){
  const msg=`${setting} is currently ${pos.toFixed(0)}% through the entered range (${min}–${max}), with the combine actually at ${actual}.\\n\\nSuggested test: ${reason} ${setting} from ${actual} to about ${Number(target.toFixed(1))}. Change sensitivity from ${sens}% to about ${Number(sensTarget.toFixed(0))}%.\\n\\n${atLimit?'IMPORTANT: The combine is already near the '+(direction>0?'top':'bottom')+' of this range. There is only '+Number(room.toFixed(1))+' of adjustment room left. Consider shifting/widening the automation range in the required direction rather than only increasing sensitivity.':'Keep the entered range for the first test. There is still usable room in the requested direction.'}\\n\\nMake one change, harvest a representative distance, then verify the physical result with the sample/pans before making another change.`;
  alert(msg);
 }
+function jarvis(){
+ const d=S.diagnosticResult;
+ const context=d?`Latest diagnostic: ${d.issue}. First setting: ${d.best.name}. Current ${d.best.actual}; range ${d.best.min}–${d.best.max}; sensitivity ${d.best.sens}%. Recommended ${d.rangeAction} ${d.rangeFrom} to ${d.rangeTo}.`:'No completed area diagnostic yet.';
+ app.innerHTML=`<h1>Jarvis</h1><div class="note"><b>Online AI Assistant</b><br>Jarvis can use your selected machine, crop and latest diagnostic to help explain or refine recommendations. AI responses require an internet connection.</div>${card('Current Context',`<p><b>Machine:</b> ${S.machine||'Not selected'}<br><b>Crop:</b> ${S.crop||'Not selected'}</p><p>${context}</p>`)}${card('Ask Jarvis',`<textarea id="jarvisQuestion" placeholder="Example: Why are you recommending a higher fan max range?"></textarea><button class="btn" id="askJarvis">ASK JARVIS</button><div id="jarvisAnswer" class="rec" style="margin-top:12px">Jarvis is ready, but the secure AI connection still needs to be connected.</div>`)}`;
+ $('#askJarvis').onclick=()=>{const out=$('#jarvisAnswer'),q=$('#jarvisQuestion').value.trim();if(!navigator.onLine){out.textContent='Jarvis needs an internet connection.';return}if(!q){out.textContent='Type a question first.';return}out.textContent='Jarvis interface is working. The secure AI backend is not connected yet, so no API key is exposed in this public GitHub Pages app.'};
+}
 function setups(){app.innerHTML=`<h1>Saved Setups</h1>${S.saved.length?S.saved.map(x=>card(`${x.machine||'Machine'} • ${x.crop||'Crop'}`,`<b>${x.customer||'No customer'}</b><div class="muted">${x.date} • ${x.note}</div><p>Rotor ${x.setup.rotor||'—'} • Concave ${x.setup.concave||'—'} • Fan ${x.setup.fan||'—'} • Pre-sieve ${x.setup.presieve||'—'} • Upper ${x.setup.upper||'—'} • Lower ${x.setup.lower||'—'}</p>`)).join(''):card('No saved setups','Save a setup from the Recommendations tab after you have verified it in the field.')}`}
-const pages={home,diagnose,pans,information,recommend:recommendations,setups};
+const pages={home,diagnose,pans,information,recommend:recommendations,jarvis,setups};
 function render(){pages[page]();status();$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$$('[data-go]').forEach(b=>b.onclick=()=>{page=b.dataset.go;render()})}
 $$('#nav button').forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});
 window.addEventListener('online',offline);window.addEventListener('offline',offline);
