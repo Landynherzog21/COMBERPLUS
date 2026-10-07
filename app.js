@@ -33,7 +33,7 @@ function diagnose(){
 }
 function diagnosticAreaPage(area){
  const settings=diagnosticAreas[area]||[];
- const rows=settings.map((name,i)=>`<section class="card diagSetting" data-setting="${name}"><h3>${name}</h3><div class="grid2"><label>Min Range</label><input type="number" step="any" data-f="min"><label>Max Range</label><input type="number" step="any" data-f="max"><label>Sensitivity (%)</label><input type="number" step="any" data-f="sens"><label>Current Position</label><input type="number" step="any" data-f="actual"></div></section>`).join('');
+ const rows=settings.map((name,i)=>`<section class="card diagSetting" data-setting="${name}"><h3>${name}</h3><div class="grid2"><label>Min Range</label><input type="number" step="1" inputmode="numeric" data-f="min"><label>Max Range</label><input type="number" step="1" inputmode="numeric" data-f="max"><label>Sensitivity (%)</label><input type="number" step="1" inputmode="numeric" data-f="sens"><label>Current Position</label><input type="number" step="1" inputmode="numeric" data-f="actual"></div></section>`).join('');
  app.innerHTML=`<h1>${area} Diagnostic</h1><div class="note">Enter the current machine data. COMBERPLUS will compare the settings and choose what to adjust first.</div>${rows}<button class="btn" id="areaCalc">MAKE RECOMMENDATION</button><button class="btn secondary" id="areaBack">BACK TO DIAGNOSE</button>`;
  $('#areaBack').onclick=diagnose;
  $('#areaCalc').onclick=()=>runAreaDiagnostic(area);
@@ -43,27 +43,53 @@ function runAreaDiagnostic(area){
  $$('.diagSetting').forEach(row=>{
   const get=f=>Number(row.querySelector('[data-f="'+f+'"]').value);
   const min=get('min'),max=get('max'),sens=get('sens'),actual=get('actual'),name=row.dataset.setting;
-  if(!Number.isFinite(min)||!Number.isFinite(max)||max<=min||!Number.isFinite(sens)||!Number.isFinite(actual)){bad=true;return}
+  if(!Number.isInteger(min)||!Number.isInteger(max)||max<=min||!Number.isInteger(sens)||!Number.isInteger(actual)){bad=true;return}
   data.push({name,min,max,sens,actual,pos:Math.max(0,Math.min(100,(actual-min)/(max-min)*100))});
  });
- if(bad||!data.length){alert('Fill in Min Range, Max Range, Sensitivity and Current Position for every setting. Max Range must be greater than Min Range.');return}
+ if(bad||!data.length){alert('Use whole numbers only for Min Range, Max Range, Sensitivity and Current Position. Max Range must be greater than Min Range.');return}
  showAreaRecommendation(area,data);
 }
 function showAreaRecommendation(area,data){
  const issue={Feeding:'FEEDING',Threshing:'THRESHING',Separation:'SEPARATION',Cleaning:'CLEANING',Residue:'RESIDUE'}[area]||area.toUpperCase();
- const scored=data.map(x=>{const edge=Math.min(x.pos,100-x.pos)/50;const sensRoom=Math.max(0,100-x.sens)/100;return {...x,score:edge*.75+sensRoom*.25}}).sort((a,b)=>b.score-a.score);
- const best=scored[0],second=scored[1],span=best.max-best.min;
- let direction=1;
- if(area==='Threshing'&&best.name==='Concave clearance')direction=-1;
- if(area==='Cleaning'&&(best.name==='Pre-sieve'||best.name==='Upper sieve'||best.name==='Lower sieve'))direction=-1;
- const rangeStep=Math.max(span*.10,span*.05);
- const newMin=direction<0?Number((best.min-rangeStep).toFixed(1)):best.min;
- const newMax=direction>0?Number((best.max+rangeStep).toFixed(1)):best.max;
- const rangeAction=direction>0?'Raise Max Range':'Lower Min Range';
- const rangeFrom=direction>0?best.max:best.min;
- const rangeTo=direction>0?newMax:newMin;
+ const atHigh=x=>x.pos>=95, atLow=x=>x.pos<=5;
+ const priority=[];
+ const add=(x,dir,why,rank=1)=>{if(x)priority.push({x,dir,why,rank})};
+ const get=n=>data.find(x=>x.name===n);
+ const rotor=get('Rotor speed'),concave=get('Concave clearance'),fan=get('Fan speed'),pre=get('Pre-sieve'),upper=get('Upper sieve'),lower=get('Lower sieve'),vanes=get('Cage vane position');
+ if(area==='Cleaning'){
+   // Boundary demand is strongest evidence: automation is asking for a setting beyond the permitted range.
+   if(atHigh(pre)) add(pre,1,'Pre-sieve is at the top of its allowed range. Harvest Command has no more opening available. A higher maximum may be justified when crop/shoe load requires more throughput, but an overly open pre-sieve can pass excess MOG to the lower shoe.',0);
+   if(atLow(pre)) add(pre,-1,'Pre-sieve is at the bottom of its allowed range. Harvest Command has no more closing available. A lower minimum may help when the system is trying to restrict material through the front of the shoe.',0);
+   if(atHigh(fan)) add(fan,1,'Cleaning fan is at the top of its allowed range, so automation cannot command more air.',0);
+   if(atLow(fan)) add(fan,-1,'Cleaning fan is at the bottom of its allowed range, so automation cannot command less air.',0);
+   if(atHigh(upper)) add(upper,1,'Upper sieve is at the top of its allowed range, so automation cannot open it farther.',0);
+   if(atLow(upper)) add(upper,-1,'Upper sieve is at the bottom of its allowed range, so automation cannot close it farther.',0);
+   if(atHigh(lower)) add(lower,1,'Lower sieve is at the top of its allowed range, so automation cannot open it farther.',0);
+   if(atLow(lower)) add(lower,-1,'Lower sieve is at the bottom of its allowed range, so automation cannot close it farther.',0);
+ }
+ if(area==='Threshing'){
+   if(atHigh(rotor))add(rotor,1,'Rotor speed is at its maximum allowed value; automation cannot add threshing/separation speed.',0);
+   if(atLow(rotor))add(rotor,-1,'Rotor speed is at its minimum allowed value; automation cannot reduce rotor aggression farther.',0);
+ }
+ if(area==='Separation'){
+   if(atHigh(rotor))add(rotor,1,'Rotor speed is at its maximum allowed value.',0);
+   if(atLow(rotor))add(rotor,-1,'Rotor speed is at its minimum allowed value.',0);
+   if(vanes&&atHigh(vanes))add(vanes,1,'Cage-vane control is at its maximum allowed value.',0);
+   if(vanes&&atLow(vanes))add(vanes,-1,'Cage-vane control is at its minimum allowed value.',0);
+ }
+ if(!priority.length){
+   const edge=data.map(x=>({x,dist:Math.min(x.pos,100-x.pos)})).sort((a,b)=>a.dist-b.dist)[0].x;
+   const dir=edge.pos>=50?1:-1;
+   add(edge,dir,'No setting is hard against a range limit. This setting is closest to a boundary, so it is the first range to review—not an automatic instruction to change it.',2);
+ }
+ priority.sort((a,b)=>a.rank-b.rank);
+ const p=priority[0],best=p.x,span=best.max-best.min,step=Math.max(1,Math.round(span*.10));
+ const rangeAction=p.dir>0?'Raise Max Range':'Lower Min Range';
+ const rangeFrom=p.dir>0?best.max:best.min;
+ const rangeTo=p.dir>0?best.max+step:best.min-step;
  const newSens=Math.min(100,best.sens+10);
- S.diagnosticResult={area,issue,data,best,second,rangeAction,rangeFrom,rangeTo,newMin,newMax,newSens,date:new Date().toLocaleString()};
+ const second=priority[1]?priority[1].x:null;
+ S.diagnosticResult={area,issue,data,best,second,rangeAction,rangeFrom,rangeTo,newSens,reason:p.why,boundary:p.rank===0,date:new Date().toLocaleString()};
  save();page='recommend';render();
 }
 function pans(){if(!S.pan.density&&densities[S.crop])S.pan.density=densities[S.crop];const p=S.pan,n=v=>Number(v)||0,area=n(p.area),g=n(p.grams),density=n(p.density),cut=n(p.cut),dis=n(p.discharge);let lb=0,bu=0,pct=0;if(area&&g&&density&&cut&&dis){lb=(g/area)*43560/453.59237*(dis/cut);bu=lb/density;pct=n(p.yield)?bu/n(p.yield)*100:0}app.innerHTML=`<h1>Drop Pans</h1><div class="note">Enter the actual catch area and collected loss weight. The calculator estimates field loss after correcting discharge width to cut width.</div>${card('Combine Loss Results',`<div class="grid2">${inp('Density / test weight (lb/bu)','density',p,'number')}${inp('Yield (bu/ac)','yield',p,'number')}${inp('Cut width (ft)','cut',p,'number')}${inp('Discharge width (ft)','discharge',p,'number')}${inp('Ground speed (mph)','speed',p,'number')}${inp('Catch area (ft²)','area',p,'number')}${inp('Loss weight (grams)','grams',p,'number')}</div><div class="result"><div><b>${bu.toFixed(2)}</b><small>bu/ac loss</small></div><div><b>${pct.toFixed(2)}%</b><small>yield loss</small></div><div><b>${lb.toFixed(1)}</b><small>lb/ac</small></div></div>`)}${card('Physical Classification',`${sel('Main physical loss location','main',['Not sure','Header','Rotor / separation','Cleaning system','No significant physical loss'],p)}<label>Notes</label><textarea data-key="notes">${p.notes||''}</textarea><button class="btn" data-go="recommend">BUILD FINAL RECOMMENDATIONS</button>`)}`;bind(p)}
@@ -289,7 +315,7 @@ function recommendations(){
  const d=S.diagnosticResult;
  if(d){
   const lines=d.data.map(x=>`<div class="rec"><b>${x.name}</b><br>Current: ${x.actual} &nbsp; | &nbsp; Range: ${x.min}–${x.max}<br>${x.pos.toFixed(0)}% through range &nbsp; | &nbsp; Sensitivity: ${x.sens}%</div>`).join('');
-  app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>${d.issue} diagnostic complete.</b> Recommendation is based on the settings entered in Diagnose.</div>${card('Entered Machine Data',lines)}${card('Recommended First Adjustment',`<div class="rec"><h3>${d.best.name}</h3><p><b>Leave Current Position under automation control.</b> It is currently at ${d.best.actual}.</p><p><b>${d.rangeAction}:</b> ${d.rangeFrom} → about <b>${d.rangeTo}</b>. This gives Harvest Command more room to make the required adjustment automatically.</p><p>If automation is reacting too slowly within the range, test sensitivity from <b>${d.best.sens}%</b> to about <b>${d.newSens}%</b>.</p>${d.second?`<p><b>Second choice:</b> ${d.second.name}. Leave it unchanged until the first adjustment is tested.</p>`:''}<p>Make one change, run a representative distance, then physically verify the result before changing another setting.</p></div>`)}<button class="btn" id="newDiag">NEW DIAGNOSTIC</button>`;
+  app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>${d.issue} diagnostic complete.</b> Recommendation is based on the settings entered in Diagnose.</div>${card('Entered Machine Data',lines)}${card('Recommended First Adjustment',`<div class="rec"><h3>${d.best.name}</h3><p><b>Why this component:</b> ${d.reason||'It is the first automation range to review from the entered data.'}</p><p><b>Leave Current Position under automation control.</b> It is currently at ${d.best.actual}.</p><p><b>${d.rangeAction}:</b> ${d.rangeFrom} → about <b>${d.rangeTo}</b>. This gives Harvest Command more room in the direction it is already trying to move.</p><p>If automation is reacting too slowly within the range, test sensitivity from <b>${d.best.sens}%</b> to about <b>${d.newSens}%</b>.</p>${d.second?`<p><b>Second choice:</b> ${d.second.name}. Leave it unchanged until the first adjustment is tested.</p>`:''}<p>Make one change, run a representative distance, then physically verify the result before changing another setting.</p></div>`)}<button class="btn" id="newDiag">NEW DIAGNOSTIC</button>`;
   $('#newDiag').onclick=()=>{S.diagnosticResult=null;save();page='diagnose';render()};
   return;
  }
