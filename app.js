@@ -15,7 +15,55 @@ function sel(label,key,arr,obj=S){return `<label>${label}</label><select data-ke
 function inp(label,key,obj=S,type='text'){return `<label>${label}</label><input type="${type}" data-key="${key}" value="${obj[key]??''}">`}
 function bind(obj=S){$$('[data-key]').forEach(e=>e.onchange=()=>{obj[e.dataset.key]=e.value;save();if(page==='information'||page==='recommend'||page==='pans')render()})}
 function home(){const body=inp('Customer','customer')+sel('Machine','machine',['',...machines])+sel('Crop','crop',['',...crops])+sel('Harvest Command','hc',['ON','OFF'])+sel('Crop / field condition','condition',['Normal','Dry / brittle','Tough / damp','Heavy crop','Light crop','Hilly / uneven']);app.innerHTML=`<h1>Home</h1>${card('Field Setup',body)}`;bind()}
-function diagnose(){const checks=symptoms.map(x=>`<label class="check"><input type="checkbox" data-sym="${x}" ${S.symptoms.includes(x)?'checked':''}><span>${x}</span></label>`).join('');const body=checks+sel('Grain sample','sample',['Clean','Unthreshed material','Cracked / damaged grain','Dirty / high MOG','Stalks / straw'])+sel('Tailings / returns','tailings',['Not checked','Mostly clean grain','Unthreshed heads / pods','Chaff / MOG','Damaged grain','Sudden high volume']);app.innerHTML=`<h1>Diagnose</h1>${card('What are you seeing?',body)}<button class="btn" data-go="recommend">BUILD RECOMMENDATIONS</button>`;bind();$$('[data-sym]').forEach(e=>e.onchange=()=>{S.symptoms=e.checked?[...new Set([...S.symptoms,e.dataset.sym])]:S.symptoms.filter(x=>x!==e.dataset.sym);save()})}
+const diagnosticAreas={
+ Feeding:['Feeder speed','Ground speed'],
+ Threshing:['Rotor speed','Concave clearance'],
+ Separation:['Rotor speed','Cage vane position'],
+ Cleaning:['Fan speed','Pre-sieve','Upper sieve','Lower sieve'],
+ Residue:['Chopper speed','Stationary knife position','Spreader speed']
+};
+function diagnose(){
+ const areaButtons=Object.keys(diagnosticAreas).map(x=>`<button class="btn areaBtn" data-area="${x}">${x.toUpperCase()}</button>`).join('');
+ const checks=symptoms.map(x=>`<label class="check"><input type="checkbox" data-sym="${x}" ${S.symptoms.includes(x)?'checked':''}><span>${x}</span></label>`).join('');
+ const body=checks+sel('Grain sample','sample',['Clean','Unthreshed material','Cracked / damaged grain','Dirty / high MOG','Stalks / straw'])+sel('Tailings / returns','tailings',['Not checked','Mostly clean grain','Unthreshed heads / pods','Chaff / MOG','Damaged grain','Sudden high volume']);
+ app.innerHTML=`<h1>Diagnose</h1>${card('1. Select Issue Area',`<div class="grid2">${areaButtons}</div>`)}${card('Or describe what you are seeing',body)}<button class="btn" data-go="recommend">BUILD RECOMMENDATIONS</button>`;
+ bind();
+ $$('.areaBtn').forEach(b=>b.onclick=()=>diagnosticAreaPage(b.dataset.area));
+ $$('[data-sym]').forEach(e=>e.onchange=()=>{S.symptoms=e.checked?[...new Set([...S.symptoms,e.dataset.sym])]:S.symptoms.filter(x=>x!==e.dataset.sym);save()});
+}
+function diagnosticAreaPage(area){
+ const settings=diagnosticAreas[area]||[];
+ const rows=settings.map((name,i)=>`<section class="card diagSetting" data-setting="${name}"><h3>${name}</h3><div class="grid2"><label>Min Range</label><input type="number" step="any" data-f="min"><label>Max Range</label><input type="number" step="any" data-f="max"><label>Sensitivity (%)</label><input type="number" step="any" data-f="sens"><label>Current Position</label><input type="number" step="any" data-f="actual"></div></section>`).join('');
+ app.innerHTML=`<h1>${area} Diagnostic</h1><div class="note">Enter the current machine data. COMBERPLUS will compare the settings and choose what to adjust first.</div>${rows}<button class="btn" id="areaCalc">MAKE RECOMMENDATION</button><button class="btn secondary" id="areaBack">BACK TO DIAGNOSE</button>`;
+ $('#areaBack').onclick=diagnose;
+ $('#areaCalc').onclick=()=>runAreaDiagnostic(area);
+}
+function runAreaDiagnostic(area){
+ const data=[];let bad=false;
+ $$('.diagSetting').forEach(row=>{
+  const get=f=>Number(row.querySelector('[data-f="'+f+'"]').value);
+  const min=get('min'),max=get('max'),sens=get('sens'),actual=get('actual'),name=row.dataset.setting;
+  if(!Number.isFinite(min)||!Number.isFinite(max)||max<=min||!Number.isFinite(sens)||!Number.isFinite(actual)){bad=true;return}
+  data.push({name,min,max,sens,actual,pos:Math.max(0,Math.min(100,(actual-min)/(max-min)*100))});
+ });
+ if(bad||!data.length){alert('Fill in Min Range, Max Range, Sensitivity and Current Position for every setting. Max Range must be greater than Min Range.');return}
+ showAreaRecommendation(area,data);
+}
+function showAreaRecommendation(area,data){
+ const issue={Feeding:'FEEDING',Threshing:'THRESHING',Separation:'SEPARATION',Cleaning:'CLEANING',Residue:'RESIDUE'}[area]||area.toUpperCase();
+ const scored=data.map(x=>{const middle=1-Math.abs(50-x.pos)/50;const sensRoom=Math.max(0,100-x.sens)/100;return {...x,score:middle*.75+sensRoom*.25}}).sort((a,b)=>b.score-a.score);
+ const best=scored[0],second=scored[1],span=best.max-best.min;
+ let direction=1,word='increase';
+ if(area==='Threshing'&&best.name==='Concave clearance'){direction=-1;word='tighten'}
+ if(area==='Cleaning'&&(best.name==='Pre-sieve'||best.name==='Upper sieve'||best.name==='Lower sieve')){direction=-1;word='close slightly'}
+ const target=Math.max(best.min,Math.min(best.max,best.actual+span*.07*direction));
+ const newSens=Math.min(100,best.sens+10);
+ const lines=data.map(x=>x.name+': '+x.actual+' | Range '+x.min+'–'+x.max+' | '+x.pos.toFixed(0)+'% through | Sensitivity '+x.sens+'%').join('\\n');
+ let msg=issue+' DIAGNOSTIC\\n\\n'+lines+'\\n\\nFIRST ADJUSTMENT\\n'+best.name+' has the best usable adjustment room from the values entered. Test '+word+' from '+best.actual+' to about '+Number(target.toFixed(1))+'. If automation needs to react more strongly, test sensitivity '+best.sens+'% → about '+newSens+'%.';
+ if(second)msg+='\\n\\nSECOND CHOICE\\n'+second.name+' — leave it unchanged until the first adjustment is tested.';
+ msg+='\\n\\nMake one change, run a representative distance, then physically verify the result before making another adjustment.';
+ alert(msg);
+}
 function pans(){if(!S.pan.density&&densities[S.crop])S.pan.density=densities[S.crop];const p=S.pan,n=v=>Number(v)||0,area=n(p.area),g=n(p.grams),density=n(p.density),cut=n(p.cut),dis=n(p.discharge);let lb=0,bu=0,pct=0;if(area&&g&&density&&cut&&dis){lb=(g/area)*43560/453.59237*(dis/cut);bu=lb/density;pct=n(p.yield)?bu/n(p.yield)*100:0}app.innerHTML=`<h1>Drop Pans</h1><div class="note">Enter the actual catch area and collected loss weight. The calculator estimates field loss after correcting discharge width to cut width.</div>${card('Combine Loss Results',`<div class="grid2">${inp('Density / test weight (lb/bu)','density',p,'number')}${inp('Yield (bu/ac)','yield',p,'number')}${inp('Cut width (ft)','cut',p,'number')}${inp('Discharge width (ft)','discharge',p,'number')}${inp('Ground speed (mph)','speed',p,'number')}${inp('Catch area (ft²)','area',p,'number')}${inp('Loss weight (grams)','grams',p,'number')}</div><div class="result"><div><b>${bu.toFixed(2)}</b><small>bu/ac loss</small></div><div><b>${pct.toFixed(2)}%</b><small>yield loss</small></div><div><b>${lb.toFixed(1)}</b><small>lb/ac</small></div></div>`)}${card('Physical Classification',`${sel('Main physical loss location','main',['Not sure','Header','Rotor / separation','Cleaning system','No significant physical loss'],p)}<label>Notes</label><textarea data-key="notes">${p.notes||''}</textarea><button class="btn" data-go="recommend">BUILD FINAL RECOMMENDATIONS</button>`)}`;bind(p)}
 function currentSettings(){return `${inp('Rotor RPM','rotor',S.setup,'number')}${inp('Concave clearance','concave',S.setup,'number')}${sel('Cage vane position / retention','vanes',['Faster crop travel','Middle / baseline','More retention'],S.setup)}${inp('Fan RPM','fan',S.setup,'number')}${inp('Pre-sieve opening','presieve',S.setup,'number')}${inp('Upper sieve opening','upper',S.setup,'number')}${inp('Lower sieve opening','lower',S.setup,'number')}${inp('Ground speed (mph)','speed',S.setup,'number')}${inp('Engine load (%)','load',S.setup,'number')}`}
 function information(){
