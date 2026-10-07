@@ -1,9 +1,10 @@
 const $=q=>document.querySelector(q), $$=q=>[...document.querySelectorAll(q)];
 const defaults={machine:'',crop:'',customer:'',hc:'ON',condition:'Normal',symptoms:[],sample:'Clean',tailings:'Not checked',
-setup:{rotor:'500',concave:'20',vanes:'Middle / baseline',fan:'950',presieve:'5',upper:'12',lower:'8',speed:'4.0',load:'75'},diagnosticResult:null,pan:{density:'',yield:'',cut:'',discharge:'',speed:'',area:'',grams:'',main:'Not sure',notes:''},saved:[]};
+setup:{rotor:'500',concave:'20',vanes:'Middle / baseline',fan:'950',presieve:'5',upper:'12',lower:'8',speed:'4.0',load:'75'},diagnosticResult:null,solutions:[],pan:{density:'',yield:'',cut:'',discharge:'',speed:'',area:'',grams:'',main:'Not sure',notes:''},saved:[]};
 let S=JSON.parse(localStorage.getItem('optimizerPro')||'null')||defaults,page='home';
 const app=document.getElementById('app');
 S.setup={...defaults.setup,...(S.setup||{})};
+S.solutions=S.solutions||[];
 const machines=['8230','8240','8250','9230','9240','9250','AF9','AF10','AF11'];
 const crops=['Canola','Wheat','Barley','Oats','Peas','Lentils','Flax','Soybeans','Corn','Other'];
 const densities={Canola:50,Wheat:60,Barley:48,Oats:34,Peas:60,Lentils:60,Flax:56,Soybeans:60,Corn:56};
@@ -424,8 +425,15 @@ function jarvis(){
  app.innerHTML=`<h1>Jarvis</h1><div class="note"><b>Online AI Assistant</b><br>Jarvis can use your selected machine, crop and latest diagnostic to help explain or refine recommendations. AI responses require an internet connection.</div>${card('Current Context',`<p><b>Machine:</b> ${S.machine||'Not selected'}<br><b>Crop:</b> ${S.crop||'Not selected'}</p><p>${context}</p>`)}${card('Ask Jarvis',`<textarea id="jarvisQuestion" placeholder="Example: Why are you recommending a higher fan max range?"></textarea><button class="btn" id="askJarvis">ASK JARVIS</button><div id="jarvisAnswer" class="rec" style="margin-top:12px">Jarvis is ready, but the secure AI connection still needs to be connected.</div>`)}`;
  $('#askJarvis').onclick=()=>{const out=$('#jarvisAnswer'),q=$('#jarvisQuestion').value.trim();if(!navigator.onLine){out.textContent='Jarvis needs an internet connection.';return}if(!q){out.textContent='Type a question first.';return}out.textContent='Jarvis interface is working. The secure AI backend is not connected yet, so no API key is exposed in this public GitHub Pages app.'};
 }
+function solutions(){
+ const d=S.diagnosticResult;
+ const latest=d?`<div class="note"><b>Latest diagnostic:</b> ${d.issue} • ${d.best.name}<br>Recommended: ${d.rangeAction} ${d.rangeFrom} → ${d.rangeTo}</div>`:'<div class="note">No current diagnostic. You can still record a solution manually.</div>';
+ const history=S.solutions.length?S.solutions.map((x,i)=>card(`${x.machine||'Machine'} • ${x.crop||'Crop'} • ${x.result}`,`<div class="muted">${x.date}${x.customer?' • '+x.customer:''}</div><p><b>Issue:</b> ${x.issue||'Manual entry'}</p><p><b>What worked:</b> ${x.solution}</p>${x.finalSettings?`<p><b>Final range / sensitivity:</b> ${x.finalSettings}</p>`:''}`)).join(''):card('No solutions saved','Your verified field fixes will appear here.');
+ app.innerHTML=`<h1>Solutions</h1>${latest}${card('Record What Actually Worked',`<label>Result</label><select id="solutionResult"><option>Better</option><option>Fixed</option><option>Same</option><option>Worse</option></select><label>What actually worked?</label><textarea id="solutionText" placeholder="Example: Raised pre-sieve max from 8 to 10 and increased sensitivity from 60% to 70%. Sample cleaned up and loss stayed acceptable."></textarea><label>Final range / sensitivity (optional)</label><input id="solutionSettings" type="text" placeholder="Example: Pre-sieve 3–10, sensitivity 70%"><button class="btn" id="saveSolution">SAVE SOLUTION</button>`)}${card('Solution History',history)}`;
+ $('#saveSolution').onclick=()=>{const solution=$('#solutionText').value.trim();if(!solution){alert('Type what actually worked first.');return}S.solutions.unshift({date:new Date().toLocaleString(),machine:S.machine,crop:S.crop,customer:S.customer,issue:d?d.issue:'',area:d?d.area:'',diagnostic:d?JSON.parse(JSON.stringify(d)):null,result:$('#solutionResult').value,solution,finalSettings:$('#solutionSettings').value.trim()});S.solutions=S.solutions.slice(0,200);save();solutions();};
+}
 function setups(){app.innerHTML=`<h1>Saved Setups</h1>${S.saved.length?S.saved.map(x=>card(`${x.machine||'Machine'} • ${x.crop||'Crop'}`,`<b>${x.customer||'No customer'}</b><div class="muted">${x.date} • ${x.note}</div><p>Rotor ${x.setup.rotor||'—'} • Concave ${x.setup.concave||'—'} • Fan ${x.setup.fan||'—'} • Pre-sieve ${x.setup.presieve||'—'} • Upper ${x.setup.upper||'—'} • Lower ${x.setup.lower||'—'}</p>`)).join(''):card('No saved setups','Save a setup from the Recommendations tab after you have verified it in the field.')}`}
-const pages={home,diagnose,pans,information,recommend:recommendations,jarvis,setups};
+const pages={home,diagnose,pans,information,recommend:recommendations,solutions,jarvis,setups};
 function render(){pages[page]();status();$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$$('[data-go]').forEach(b=>b.onclick=()=>{page=b.dataset.go;render()})}
 $$('#nav button').forEach(b=>b.onclick=()=>{page=b.dataset.page;render()});
 window.addEventListener('online',offline);window.addEventListener('offline',offline);
