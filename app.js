@@ -235,7 +235,50 @@ function information(){
  filtered.map(x=>'<section class="card infoCard"><h2>'+x[0]+'</h2><div class="familyTag">'+x[2]+'</div><p>'+x[1]+'</p></section>').join('');
  const box=document.getElementById('infoSearch'); if(box){box.value=q;box.oninput=()=>{const v=box.value;information();const n=document.getElementById('infoSearch');n.value=v;n.focus();n.setSelectionRange(v.length,v.length)}}
 }
-function recommendations(){let r=[];const has=x=>S.symptoms.includes(x);if(has('Unthreshed grain / heads / pods')||S.sample==='Unthreshed material'||S.tailings==='Unthreshed heads / pods')r.push(['THRESHING','Verify grain is still attached. Test more effective threshing with rotor speed and/or concave clearance. Make one change, then physically verify.']);if(has('Rotor loss / free grain in straw')||S.pan.main==='Rotor / separation')r.push(['SEPARATION','Loose grain with straw points to separation. Check crop load and separation opportunity; test rotor/cage-vane strategy from the current baseline and verify with pans.']);if(has('Sieve loss / free grain in chaff')||has('Grain blowing out')||S.pan.main==='Cleaning system')r.push(['CLEANING','Loose grain with chaff points to the cleaning system. Determine whether the shoe is overloaded or airflow is carrying grain out before changing fan or sieve openings.']);if(has('Cracked / broken grain')||S.sample==='Cracked / damaged grain')r.push(['GRAIN DAMAGE','Reduce unnecessary threshing/rethreshing. Check rotor aggression, concave clearance and whether clean grain is being recirculated in tailings.']);if(has('Dirty sample / MOG')||S.sample==='Dirty / high MOG')r.push(['DIRTY SAMPLE','Identify whether MOG is being created upstream by aggressive threshing or not removed by the cleaning system. Do not automatically close sieves first.']);if(S.tailings==='Mostly clean grain')r.push(['TAILINGS','Mostly clean grain in returns can indicate cleaning restriction. Check sieve openings and loading before increasing threshing aggression.']);if(!r.length)r.push(['VERIFY FIRST','Physically classify the problem: attached grain = threshing, loose grain with straw = separation, loose grain with chaff = cleaning. Then make one change and recheck.']);app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>One change at a time.</b> Confirm the physical loss location before chasing monitor numbers.</div>${card('Ranked Diagnostic Direction',r.map((x,i)=>`<div class="rec"><h3>${i+1}. ${x[0]}</h3><p>${x[1]}</p></div>`).join(''))}<button class="btn" id="saveSetup">SAVE THIS SETUP</button>`;$('#saveSetup').onclick=()=>{S.saved.unshift({date:new Date().toLocaleDateString(),machine:S.machine,crop:S.crop,customer:S.customer,setup:{...S.setup},note:r[0][0]});S.saved=S.saved.slice(0,30);save();alert('Setup saved')}}
+function recommendations(){
+ let r=[];const has=x=>S.symptoms.includes(x);
+ if(has('Unthreshed grain / heads / pods')||S.sample==='Unthreshed material'||S.tailings==='Unthreshed heads / pods')r.push(['THRESHING','Verify grain is still attached. Test more effective threshing with rotor speed and/or concave clearance. Make one change, then physically verify.',['Rotor speed','Concave clearance']]);
+ if(has('Rotor loss / free grain in straw')||S.pan.main==='Rotor / separation')r.push(['SEPARATION','Loose grain with straw points to separation. Check crop load and separation opportunity; test rotor/cage-vane strategy from the current baseline and verify with pans.',['Rotor speed','Cage vane position']]);
+ if(has('Sieve loss / free grain in chaff')||has('Grain blowing out')||S.pan.main==='Cleaning system')r.push(['CLEANING','Loose grain with chaff points to the cleaning system. Determine whether the shoe is overloaded or airflow is carrying grain out before changing fan or sieve openings.',['Fan speed','Pre-sieve','Upper sieve','Lower sieve']]);
+ if(has('Cracked / broken grain')||S.sample==='Cracked / damaged grain')r.push(['GRAIN DAMAGE','Reduce unnecessary threshing/rethreshing. Check rotor aggression, concave clearance and whether clean grain is being recirculated in tailings.',['Rotor speed','Concave clearance']]);
+ if(has('Dirty sample / MOG')||S.sample==='Dirty / high MOG')r.push(['DIRTY SAMPLE','Identify whether MOG is being created upstream by aggressive threshing or not removed by the cleaning system. Do not automatically close sieves first.',['Fan speed','Upper sieve','Lower sieve','Rotor speed']]);
+ if(S.tailings==='Mostly clean grain')r.push(['TAILINGS','Mostly clean grain in returns can indicate cleaning restriction. Check sieve openings and loading before increasing threshing aggression.',['Upper sieve','Lower sieve']]);
+ if(!r.length)r.push(['VERIFY FIRST','Physically classify the problem: attached grain = threshing, loose grain with straw = separation, loose grain with chaff = cleaning. Then make one change and recheck.',[]]);
+ app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>One change at a time.</b> Confirm the physical loss location before chasing monitor numbers.</div>${card('Ranked Diagnostic Direction',r.map((x,i)=>`<div class="rec"><h3>${i+1}. ${x[0]}</h3><p>${x[1]}</p>${x[2].length?`<button class="btn tuneBtn" data-ri="${i}">CALCULATE ADJUSTMENT</button>`:''}</div>`).join(''))}<button class="btn" id="saveSetup">SAVE THIS SETUP</button>`;
+ $$('.tuneBtn').forEach(b=>b.onclick=()=>openAdjustment(r[Number(b.dataset.ri)]));
+ $('#saveSetup').onclick=()=>{S.saved.unshift({date:new Date().toLocaleDateString(),machine:S.machine,crop:S.crop,customer:S.customer,setup:{...S.setup},note:r[0][0]});S.saved=S.saved.slice(0,30);save();alert('Setup saved')}
+}
+function openAdjustment(rec){
+ const settings=rec[2]||[];if(!settings.length)return;
+ const setting=prompt('Which setting do you want to adjust?\\n\\n'+settings.map((x,i)=>(i+1)+'. '+x).join('\\n')+'\\n\\nType the setting name:');
+ if(!setting)return;
+ const matched=settings.find(x=>x.toLowerCase()===setting.trim().toLowerCase())||settings.find(x=>x.toLowerCase().includes(setting.trim().toLowerCase()));
+ if(!matched){alert('That setting is not one of the recommended adjustments for this problem.');return}
+ const min=Number(prompt(matched+' — enter the MINIMUM automation range:'));if(!Number.isFinite(min))return;
+ const max=Number(prompt(matched+' — enter the MAXIMUM automation range:'));if(!Number.isFinite(max)||max<=min){alert('Maximum must be greater than minimum.');return}
+ const sens=Number(prompt(matched+' — enter current SENSITIVITY (%):'));if(!Number.isFinite(sens))return;
+ const actual=Number(prompt(matched+' — where is the combine ACTUALLY running right now?'));if(!Number.isFinite(actual))return;
+ const severity=prompt('How bad is the problem? Type MILD, MODERATE, or SEVERE:')||'MODERATE';
+ showAdjustment(rec[0],matched,min,max,sens,actual,severity);
+}
+function showAdjustment(problem,setting,min,max,sens,actual,severity){
+ const span=max-min,pos=Math.max(0,Math.min(100,(actual-min)/span*100));
+ const sev=/severe/i.test(severity)?3:/mild/i.test(severity)?1:2;
+ let direction=1,reason='increase';
+ if(problem==='GRAIN DAMAGE'){direction=-1;reason='decrease'}
+ if(problem==='CLEANING'&&setting==='Fan speed'&&S.symptoms.includes('Grain blowing out')){direction=-1;reason='decrease'}
+ if(problem==='DIRTY SAMPLE'&&setting==='Rotor speed'){direction=-1;reason='decrease'}
+ if(problem==='TAILINGS'&&(setting==='Upper sieve'||setting==='Lower sieve')){direction=1;reason='open'}
+ if(setting==='Concave clearance'&&problem==='THRESHING'){direction=-1;reason='tighten'}
+ if(setting==='Concave clearance'&&problem==='GRAIN DAMAGE'){direction=1;reason='open'}
+ const pctStep=[0,0.04,0.07,0.10][sev], rawStep=span*pctStep*direction;
+ let target=actual+rawStep;target=Math.max(min,Math.min(max,target));
+ let sensTarget=Math.max(0,Math.min(100,sens+(direction*([0,5,10,15][sev]))));
+ const atLimit=(direction>0&&pos>=90)||(direction<0&&pos<=10);
+ const room=direction>0?max-actual:actual-min;
+ const msg=`${setting} is currently ${pos.toFixed(0)}% through the entered range (${min}–${max}), with the combine actually at ${actual}.\\n\\nSuggested test: ${reason} ${setting} from ${actual} to about ${Number(target.toFixed(1))}. Change sensitivity from ${sens}% to about ${Number(sensTarget.toFixed(0))}%.\\n\\n${atLimit?'IMPORTANT: The combine is already near the '+(direction>0?'top':'bottom')+' of this range. There is only '+Number(room.toFixed(1))+' of adjustment room left. Consider shifting/widening the automation range in the required direction rather than only increasing sensitivity.':'Keep the entered range for the first test. There is still usable room in the requested direction.'}\\n\\nMake one change, harvest a representative distance, then verify the physical result with the sample/pans before making another change.`;
+ alert(msg);
+}
 function setups(){app.innerHTML=`<h1>Saved Setups</h1>${S.saved.length?S.saved.map(x=>card(`${x.machine||'Machine'} • ${x.crop||'Crop'}`,`<b>${x.customer||'No customer'}</b><div class="muted">${x.date} • ${x.note}</div><p>Rotor ${x.setup.rotor||'—'} • Concave ${x.setup.concave||'—'} • Fan ${x.setup.fan||'—'} • Pre-sieve ${x.setup.presieve||'—'} • Upper ${x.setup.upper||'—'} • Lower ${x.setup.lower||'—'}</p>`)).join(''):card('No saved setups','Save a setup from the Recommendations tab after you have verified it in the field.')}`}
 const pages={home,diagnose,pans,information,recommend:recommendations,setups};
 function render(){pages[page]();status();$$('#nav button').forEach(b=>b.classList.toggle('active',b.dataset.page===page));$$('[data-go]').forEach(b=>b.onclick=()=>{page=b.dataset.go;render()})}
