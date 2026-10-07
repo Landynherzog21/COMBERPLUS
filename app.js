@@ -1,6 +1,6 @@
 const $=q=>document.querySelector(q), $$=q=>[...document.querySelectorAll(q)];
 const defaults={machine:'',crop:'',customer:'',hc:'ON',condition:'Normal',symptoms:[],sample:'Clean',tailings:'Not checked',
-setup:{rotor:'500',concave:'20',vanes:'Middle / baseline',fan:'950',presieve:'5',upper:'12',lower:'8',speed:'4.0',load:'75'},pan:{density:'',yield:'',cut:'',discharge:'',speed:'',area:'',grams:'',main:'Not sure',notes:''},saved:[]};
+setup:{rotor:'500',concave:'20',vanes:'Middle / baseline',fan:'950',presieve:'5',upper:'12',lower:'8',speed:'4.0',load:'75'},diagnosticResult:null,pan:{density:'',yield:'',cut:'',discharge:'',speed:'',area:'',grams:'',main:'Not sure',notes:''},saved:[]};
 let S=JSON.parse(localStorage.getItem('optimizerPro')||'null')||defaults,page='home';
 const app=document.getElementById('app');
 S.setup={...defaults.setup,...(S.setup||{})};
@@ -58,11 +58,8 @@ function showAreaRecommendation(area,data){
  if(area==='Cleaning'&&(best.name==='Pre-sieve'||best.name==='Upper sieve'||best.name==='Lower sieve')){direction=-1;word='close slightly'}
  const target=Math.max(best.min,Math.min(best.max,best.actual+span*.07*direction));
  const newSens=Math.min(100,best.sens+10);
- const lines=data.map(x=>x.name+': '+x.actual+' | Range '+x.min+'–'+x.max+' | '+x.pos.toFixed(0)+'% through | Sensitivity '+x.sens+'%').join('\\n');
- let msg=issue+' DIAGNOSTIC\\n\\n'+lines+'\\n\\nFIRST ADJUSTMENT\\n'+best.name+' has the best usable adjustment room from the values entered. Test '+word+' from '+best.actual+' to about '+Number(target.toFixed(1))+'. If automation needs to react more strongly, test sensitivity '+best.sens+'% → about '+newSens+'%.';
- if(second)msg+='\\n\\nSECOND CHOICE\\n'+second.name+' — leave it unchanged until the first adjustment is tested.';
- msg+='\\n\\nMake one change, run a representative distance, then physically verify the result before making another adjustment.';
- alert(msg);
+ S.diagnosticResult={area,issue,data,best,second,target:Number(target.toFixed(1)),newSens,word,date:new Date().toLocaleString()};
+ save();page='recommend';render();
 }
 function pans(){if(!S.pan.density&&densities[S.crop])S.pan.density=densities[S.crop];const p=S.pan,n=v=>Number(v)||0,area=n(p.area),g=n(p.grams),density=n(p.density),cut=n(p.cut),dis=n(p.discharge);let lb=0,bu=0,pct=0;if(area&&g&&density&&cut&&dis){lb=(g/area)*43560/453.59237*(dis/cut);bu=lb/density;pct=n(p.yield)?bu/n(p.yield)*100:0}app.innerHTML=`<h1>Drop Pans</h1><div class="note">Enter the actual catch area and collected loss weight. The calculator estimates field loss after correcting discharge width to cut width.</div>${card('Combine Loss Results',`<div class="grid2">${inp('Density / test weight (lb/bu)','density',p,'number')}${inp('Yield (bu/ac)','yield',p,'number')}${inp('Cut width (ft)','cut',p,'number')}${inp('Discharge width (ft)','discharge',p,'number')}${inp('Ground speed (mph)','speed',p,'number')}${inp('Catch area (ft²)','area',p,'number')}${inp('Loss weight (grams)','grams',p,'number')}</div><div class="result"><div><b>${bu.toFixed(2)}</b><small>bu/ac loss</small></div><div><b>${pct.toFixed(2)}%</b><small>yield loss</small></div><div><b>${lb.toFixed(1)}</b><small>lb/ac</small></div></div>`)}${card('Physical Classification',`${sel('Main physical loss location','main',['Not sure','Header','Rotor / separation','Cleaning system','No significant physical loss'],p)}<label>Notes</label><textarea data-key="notes">${p.notes||''}</textarea><button class="btn" data-go="recommend">BUILD FINAL RECOMMENDATIONS</button>`)}`;bind(p)}
 function currentSettings(){return `${inp('Rotor RPM','rotor',S.setup,'number')}${inp('Concave clearance','concave',S.setup,'number')}${sel('Cage vane position / retention','vanes',['Faster crop travel','Middle / baseline','More retention'],S.setup)}${inp('Fan RPM','fan',S.setup,'number')}${inp('Pre-sieve opening','presieve',S.setup,'number')}${inp('Upper sieve opening','upper',S.setup,'number')}${inp('Lower sieve opening','lower',S.setup,'number')}${inp('Ground speed (mph)','speed',S.setup,'number')}${inp('Engine load (%)','load',S.setup,'number')}`}
@@ -284,6 +281,13 @@ function information(){
  const box=document.getElementById('infoSearch'); if(box){box.value=q;box.oninput=()=>{const v=box.value;information();const n=document.getElementById('infoSearch');n.value=v;n.focus();n.setSelectionRange(v.length,v.length)}}
 }
 function recommendations(){
+ const d=S.diagnosticResult;
+ if(d){
+  const lines=d.data.map(x=>`<div class="rec"><b>${x.name}</b><br>Current: ${x.actual} &nbsp; | &nbsp; Range: ${x.min}–${x.max}<br>${x.pos.toFixed(0)}% through range &nbsp; | &nbsp; Sensitivity: ${x.sens}%</div>`).join('');
+  app.innerHTML=`<h1>Recommendations</h1><div class="note"><b>${d.issue} diagnostic complete.</b> Recommendation is based on the settings entered in Diagnose.</div>${card('Entered Machine Data',lines)}${card('Recommended First Adjustment',`<div class="rec"><h3>${d.best.name}</h3><p>Test ${d.word} from <b>${d.best.actual}</b> to about <b>${d.target}</b>.</p><p>If automation needs to react more strongly, test sensitivity from <b>${d.best.sens}%</b> to about <b>${d.newSens}%</b>.</p>${d.second?`<p><b>Second choice:</b> ${d.second.name}. Leave it unchanged until the first adjustment is tested.</p>`:''}<p>Make one change, run a representative distance, then physically verify the result before changing another setting.</p></div>`)}<button class="btn" id="newDiag">NEW DIAGNOSTIC</button>`;
+  $('#newDiag').onclick=()=>{S.diagnosticResult=null;save();page='diagnose';render()};
+  return;
+ }
  let r=[];const has=x=>S.symptoms.includes(x);
  if(has('Unthreshed grain / heads / pods')||S.sample==='Unthreshed material'||S.tailings==='Unthreshed heads / pods')r.push(['THRESHING','Verify grain is still attached. Test more effective threshing with rotor speed and/or concave clearance. Make one change, then physically verify.',['Rotor speed','Concave clearance']]);
  if(has('Rotor loss / free grain in straw')||S.pan.main==='Rotor / separation')r.push(['SEPARATION','Loose grain with straw points to separation. Check crop load and separation opportunity; test rotor/cage-vane strategy from the current baseline and verify with pans.',['Rotor speed','Cage vane position']]);
